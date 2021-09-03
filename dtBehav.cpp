@@ -1971,7 +1971,7 @@ void TDtBehav::getPicture(void)
   unsigned int len=LEN[vV];
   int ch=map_inpGetPicData.take(GETPIC_CHANNEL).toInt(&ok);
   double coeff=0.308;
-  if(vV) coeff=0.308/4.5;
+  if(vV) coeff=0.154;
   int exp=(int)(map_inpGetPicData.take(GETPIC_EXP).toInt(&ok)/coeff);
   int ctrl=map_inpGetPicData.take(GETPIC_CTRL).toInt(&ok);
   QByteArray buf;
