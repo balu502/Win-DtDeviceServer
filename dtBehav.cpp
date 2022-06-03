@@ -393,7 +393,7 @@ void TDtBehav::run()
 // --SM run precheking begin-----------------------------------------------------
       case CHECKING_STATE: {
         logSrv->logMessage(tr("Check before RUN request."));
-        //checking();
+        checking();
         allStates[CHECKING_STATE]=READY;
         stCheckingErr=devError.analyseError();
         if(stCheckingErr){
@@ -1110,7 +1110,7 @@ bool TDtBehav::readFromUSB512(QString cmd,QString templ,unsigned char* buf)
 
     if(FX2->BulkRead((unsigned char *)buf,BYTES_IN_SECTOR)) {errRead=0; break;} // read ok
     FX2->BulkClear();
-    //msleep(100);
+    msleep(100);
   }
 
   if(errRead) {
@@ -1343,6 +1343,12 @@ void TDtBehav::getInfoDevice()
   if(USBCy_RW("FVER",answer,FX2,Optics_uC)) text += answer;
   if(USBCy_RW("FVER",answer,FX2,Temp_uC)) text += "\r\n" + answer;
   if(USBCy_RW("FVER",answer,FX2,Motor_uC)) text += "\r\n" + answer;
+  QStringList motFW=answer.split(' ');
+  QString tmps=motFW.at(1);
+  tmps.remove(QRegExp("([A-z])"));
+  bool ok;
+  fMotVersion=tmps.toDouble(&ok);
+  if(!ok)fMotVersion=6.10;
   if(USBCy_RW("FVER",answer,FX2,Display_uC)) text += "\r\n" + answer;
   map_InfoDevice.insert(INFODEV_version, text);
 
@@ -1570,7 +1576,24 @@ void TDtBehav::measHighTubeStart(void)
 {
   devError.clearDevError();
   QString answer;
-  USBCy_RW("HTUBE",answer,FX2,Motor_uC);
+  if(fMotVersion<6.90){
+    USBCy_RW("HTUBE",answer,FX2,Motor_uC);
+  }
+  else{
+    USBCy_RW("HOPEN",answer,FX2,Motor_uC);
+    int i=-1,t=0;
+    while(t<25){ // wait 25 sec & check
+      t++;
+      msleep((1000));
+      USBCy_RW("HPOS",answer,FX2,Motor_uC);
+      i=-1;
+      QTextStream(&answer) >> i;
+      if(i==3) break;
+    }
+    if(t>=25) { devError.setDevError(MEASHIGHTUBE_ERROR); return;}
+    USBCy_RW("HMEAS",answer,FX2,Motor_uC);
+  }
+
 }
 //-----------------------------------------------------------------------------
 //--- Finish measure high of tube MEASHIGHTUBE_STATE
@@ -1580,8 +1603,15 @@ void TDtBehav::measHighTubeFinish(void)
   devError.clearDevError();
   QString answer;
   int i=-1;
-  if(USBCy_RW("HDIST",answer,FX2,Motor_uC)){
-    QTextStream(&answer) >> i;
+  if(fMotVersion<6.90){
+    if(USBCy_RW("HDIST",answer,FX2,Motor_uC)){
+      QTextStream(&answer) >> i;
+    }
+  }
+  else {
+    if(USBCy_RW("HTSET",answer,FX2,Motor_uC)){
+      QTextStream(&answer) >> i;
+    }
   }
   tubeHigh=i;
 }
@@ -1608,7 +1638,12 @@ int TDtBehav::checkMeasHighTubeState(void)
 void TDtBehav::writeHighTubeValue(int value)
 {
   QString answer;
-  USBCy_RW(QString("STUB %1 0 0 0").arg(value),answer,FX2,Motor_uC);
+  if(fMotVersion<6.90){
+    USBCy_RW(QString("STUB %1 0 0 0").arg(value),answer,FX2,Motor_uC);
+  }
+  else {
+    USBCy_RW("WRT",answer,FX2,Motor_uC);
+  }
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1625,12 +1660,18 @@ void TDtBehav::startRun()
 // test on close cover. if don't close, return error state
   if(USBCy_RW("HPOS",answer,FX2,Motor_uC)) { // check
     QTextStream(&answer) >> i;
- //   if(i!=2){ devError.setDevError(STARTWITHOPENCOVER_ERROR); return ; } //run
+    if(i!=2){ devError.setDevError(STARTWITHOPENCOVER_ERROR); return ; } //run
   }
+
+//  if(fMotVersion>=6.00){
+//    if(USBCy_RW("HPRESS",answer,FX2,Motor_uC)){
+//      QTextStream(&answer) >> i;
+//    }
+//  }
+
   if(devError.analyseError()){
     return ; //fatal error
   }
-
 // 2. write optical chanels
   USBCy_RW("ST",answer,FX2,Temp_uC);
   USBCy_RW("XSP 0",answer,FX2,Temp_uC);
